@@ -98,7 +98,6 @@ const AudioVisualizer = ({ level }: { level: number }) => {
   return (
     <div className="flex items-center justify-center space-x-1 h-8 w-32">
       {[1, 2, 3, 4, 5, 6, 7].map((i) => {
-        // Create a smooth, organic wave effect based on volume level
         const waveOffset = Math.sin(i * 1.2) * 25;
         const h = Math.max(15, Math.min(100, level + waveOffset));
         return (
@@ -272,7 +271,7 @@ export default function SecretChat() {
       setShowLanding(false);
       setRoomId(urlRoom);
       setSenderId(getOrCreateSenderId(urlRoom));
-      importKeyFromBase64(decodeURIComponent(urlKey))
+      importKeyFromBase64(decodeURIComponent(urlKey) as string)
         .then((key) => {
           setCryptoKey(key);
           setRoomKeyBase64(urlKey);
@@ -344,9 +343,9 @@ export default function SecretChat() {
 
   const createRoom = async () => {
     const newRoomId = generateRoomId();
-    const key = await generateKey();
+    const key = await generateKey() as CryptoKey; // FIX: Explicit type assertion
     const rawExportedKey = await exportKeyToBase64(key);
-    const encodedKey = encodeURIComponent(rawExportedKey);
+    const encodedKey = encodeURIComponent(rawExportedKey as string); // FIX: Explicit type assertion
 
     setRoomId(newRoomId);
     setCryptoKey(key);
@@ -365,7 +364,7 @@ export default function SecretChat() {
       return;
     }
     const normalizedRoomId = joinRoomId.toUpperCase();
-    importKeyFromBase64(decodeURIComponent(joinRoomKey))
+    importKeyFromBase64(decodeURIComponent(joinRoomKey) as string) // FIX: Explicit type assertion
       .then((key) => {
         setRoomId(normalizedRoomId);
         setCryptoKey(key);
@@ -397,7 +396,7 @@ export default function SecretChat() {
           const decryptedMsgs = await Promise.all(
             data.messages.map(async (msg: any) => {
               try {
-                const text = await decryptText(msg.payload, cryptoKey);
+                const text = await decryptText(msg.payload, cryptoKey as CryptoKey);
                 if (msg.type === 'system') {
                   if (text.startsWith('__SYS_PEER__:')) {
                     const pId = text.split('__SYS_PEER__:')[1];
@@ -451,7 +450,7 @@ export default function SecretChat() {
   const sendSystemMessage = async (text: string) => {
     if (!cryptoKey || !roomId) return;
     const messageId = Date.now().toString();
-    const encryptedPayload = await encryptText(text, cryptoKey);
+    const encryptedPayload = await encryptText(text, cryptoKey as CryptoKey);
     await fetch('/api/message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -462,7 +461,7 @@ export default function SecretChat() {
   const sendMessage = async () => {
     if (!inputText.trim() || !cryptoKey || !roomId) return;
     const messageId = Date.now().toString();
-    const encryptedPayload = await encryptText(inputText, cryptoKey);
+    const encryptedPayload = await encryptText(inputText, cryptoKey as CryptoKey);
     await fetch('/api/message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -484,7 +483,6 @@ export default function SecretChat() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       
-      // Setup Audio Visualizer
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       audioContextRef.current = audioContext;
       const analyser = audioContext.createAnalyser();
@@ -504,7 +502,6 @@ export default function SecretChat() {
           sum += dataArray[i];
         }
         const average = sum / dataArray.length;
-        // Map 0-255 to 0-100, amplify slightly for better visual response
         const volume = Math.min(100, Math.max(0, (average / 255) * 100 * 2.5)); 
         
         setAudioLevel(volume);
@@ -536,7 +533,7 @@ export default function SecretChat() {
       
       recordingIntervalRef.current = setInterval(() => {
         setRecordingTime(prev => {
-          if (prev >= 59) { // Max 60 seconds to keep payload small
+          if (prev >= 59) {
             stopRecording();
             return 60;
           }
@@ -564,7 +561,7 @@ export default function SecretChat() {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       setAudioLevel(0);
-      audioChunksRef.current = []; // Clear chunks so it doesn't send
+      audioChunksRef.current = [];
       cleanupRecording();
     }
   };
@@ -577,7 +574,7 @@ export default function SecretChat() {
       reader.onloadend = async () => {
         const base64Audio = reader.result as string;
         const messageId = Date.now().toString();
-        const encryptedPayload = await encryptText(base64Audio, cryptoKey);
+        const encryptedPayload = await encryptText(base64Audio, cryptoKey as CryptoKey);
         
         await fetch('/api/message', {
           method: 'POST',
@@ -594,7 +591,7 @@ export default function SecretChat() {
   const loadAudio = async (msgId: string, encryptedBase64: string) => {
     if (decryptedAudios[msgId] || !cryptoKey) return;
     try {
-      const decryptedDataUrl = await decryptText(encryptedBase64, cryptoKey);
+      const decryptedDataUrl = await decryptText(encryptedBase64, cryptoKey as CryptoKey);
       setDecryptedAudios(prev => ({ ...prev, [msgId]: decryptedDataUrl }));
     } catch (error) {
       console.error("Audio decrypt failed", error);
@@ -783,7 +780,7 @@ export default function SecretChat() {
     try {
       const compressed = await compressImage(file, 800, 0.6);
       const messageId = Date.now().toString();
-      const encryptedPayload = await encryptText(compressed, cryptoKey);
+      const encryptedPayload = await encryptText(compressed, cryptoKey as CryptoKey);
       await fetch('/api/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -816,7 +813,7 @@ export default function SecretChat() {
   const openImage = async (msgId: string, encryptedBase64: string) => {
     if (!cryptoKey || viewedImages.has(msgId)) return;
     try {
-      const decryptedDataUrl = await decryptText(encryptedBase64, cryptoKey);
+      const decryptedDataUrl = await decryptText(encryptedBase64, cryptoKey as CryptoKey);
       setViewingImage({ url: decryptedDataUrl, id: msgId });
     } catch (error) { console.error('Decrypt failed', error); }
   };
