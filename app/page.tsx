@@ -1,6 +1,6 @@
 // app/page.tsx
-import type { MediaConnection, Peer as PeerType } from 'peerjs';
 'use client';
+import type { MediaConnection, Peer as PeerType } from 'peerjs';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { generateKey, exportKeyToBase64, importKeyFromBase64, encryptText, decryptText } from '@/lib/crypto';
 import { Phone, Video, PhoneOff, Mic, MicOff, VideoOff, User, CheckCircle, Image as ImageIcon, Send, Lock, MessageCircle, MoreVertical, Copy, Volume2, AlertCircle, X, Check } from 'lucide-react';
