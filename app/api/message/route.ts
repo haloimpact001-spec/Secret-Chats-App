@@ -13,7 +13,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing cryptographic payload' }, { status: 400 });
     }
 
-    // Store the encrypted payload (text or image base64) with a 5-minute self-destruct
     await redis.set(
       `msg:${roomId}:${messageId}`, 
       JSON.stringify({ payload: encryptedPayload, sender: senderId, type: type || 'text' }), 
@@ -47,6 +46,27 @@ export async function GET(request: NextRequest) {
       }
     }
     return NextResponse.json({ success: true, messages }, { status: 200 });
+  } catch (error) {
+    return NextResponse.json({ error: 'Server failure' }, { status: 500 });
+  }
+}
+
+// --- NEW DELETE ROUTE ---
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const roomId = searchParams.get('roomId');
+    const messageId = searchParams.get('messageId');
+
+    if (!roomId || !messageId) {
+      return NextResponse.json({ error: 'Missing roomId or messageId' }, { status: 400 });
+    }
+
+    // Remove from index and delete the actual message
+    await redis.srem(`room:${roomId}:index`, messageId);
+    await redis.del(`msg:${roomId}:${messageId}`);
+
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ error: 'Server failure' }, { status: 500 });
   }

@@ -1,7 +1,7 @@
 // app/page.tsx
+import type { MediaConnection, Peer as PeerType } from 'peerjs';
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import Peer, { MediaConnection } from 'peerjs';
 import { generateKey, exportKeyToBase64, importKeyFromBase64, encryptText, decryptText } from '@/lib/crypto';
 import { Phone, Video, PhoneOff, Mic, MicOff, VideoOff, User, CheckCircle, Image as ImageIcon, Send, Lock, MessageCircle, MoreVertical, Copy, Volume2, AlertCircle, X, Check } from 'lucide-react';
 
@@ -120,7 +120,7 @@ export default function SecretChat() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const myPeerIdRef = useRef<string | null>(null);
-  const peerInstance = useRef<Peer | null>(null);
+  const peerInstance = useRef<PeerType | null>(null);
   const currentCall = useRef<MediaConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const callTimeoutRef = useRef<any>(null);
@@ -283,9 +283,11 @@ export default function SecretChat() {
         .catch((err) => console.error('Key import failed', err));
     }
   }, []);
-
-  const initializePeer = () => {
+  const initializePeer = async () => {
     if (peerInstance.current) return;
+
+    // DYNAMIC IMPORT: This prevents Vercel/Next.js SSR build errors
+    const { default: Peer } = await import('peerjs');
 
     const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
     const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
@@ -306,6 +308,7 @@ export default function SecretChat() {
       debug: 2,
       config: { iceServers, iceCandidatePoolSize: 10 },
     });
+    // ... (keep the rest of the initializePeer function exactly as it was)
 
     peer.on('open', (id) => {
       myPeerIdRef.current = id;
