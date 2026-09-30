@@ -1,4 +1,3 @@
-// app/page.tsx
 'use client';
 import type { MediaConnection, Peer as PeerType } from 'peerjs';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -93,24 +92,127 @@ const buildShareUrl = (roomId: string, encodedKey: string): string => {
   return `${window.location.origin}${window.location.pathname}#room=${roomId}&key=${encodedKey}`;
 };
 
-// --- Audio Visualizer Component ---
-const AudioVisualizer = ({ level }: { level: number }) => {
-  return (
-    <div className="flex items-center justify-center space-x-1 h-8 w-32">
-      {[1, 2, 3, 4, 5, 6, 7].map((i) => {
-        const waveOffset = Math.sin(i * 1.2) * 25;
-        const h = Math.max(15, Math.min(100, level + waveOffset));
-        return (
-          <div 
-            key={i} 
-            className="w-1.5 bg-red-500 rounded-full transition-all duration-75 ease-out"
-            style={{ height: `${h}%` }}
-          />
-        );
-      })}
-    </div>
-  );
+// --- Professional Zero-Dependency Canvas Confetti Physics Engine ---
+interface Particle {
+  x: number; y: number; vx: number; vy: number;
+  size: number; color: string; rotation: number; rotationSpeed: number;
+}
+
+const Confetti = ({ active }: { active: boolean }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const particlesRef = useRef<Particle[]>([]);
+  const animationRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!active) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const colors = ['#FFD700', '#FF4500', '#00FF7F', '#1E90FF', '#FF69B4', '#9400D3', '#FFFFFF'];
+    particlesRef.current = [];
+
+    // "Boolean Force" Explosion: 150 particles bursting from the center
+    for (let i = 0; i < 150; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const velocity = Math.random() * 15 + 5;
+      particlesRef.current.push({
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        vx: Math.cos(angle) * velocity,
+        vy: Math.sin(angle) * velocity - 5, // Upward bias
+        size: Math.random() * 8 + 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * 360,
+        rotationSpeed: (Math.random() - 0.5) * 10,
+      });
+    }
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let activeParticles = false;
+
+      particlesRef.current.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.4; // Gravity
+        p.vx *= 0.98; // Air resistance
+        p.rotation += p.rotationSpeed;
+
+        if (p.y < canvas.height + 50) {
+          activeParticles = true;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate((p.rotation * Math.PI) / 180);
+          ctx.fillStyle = p.color;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = p.color; // Shining effect
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size / 2);
+          ctx.restore();
+        }
+      });
+
+      if (activeParticles) {
+        animationRef.current = requestAnimationFrame(animate);
+      }
+    };
+    animate();
+
+    return () => {
+      cancelAnimationFrame(animationRef.current);
+    };
+  }, [active]);
+
+  if (!active) return null;
+  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-[100]" />;
 };
+
+// --- Celebration Sound Synthesizer (Zero Dependencies) ---
+const playCelebrationSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // 1. The "Poooooop" Sound (Rapid pitch drop)
+    const popOsc = audioContext.createOscillator();
+    const popGain = audioContext.createGain();
+    popOsc.connect(popGain);
+    popGain.connect(audioContext.destination);
+    popOsc.type = 'sine';
+    popOsc.frequency.setValueAtTime(800, audioContext.currentTime);
+    popOsc.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.15);
+    popGain.gain.setValueAtTime(0.3, audioContext.currentTime);
+    popGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+    popOsc.start(audioContext.currentTime);
+    popOsc.stop(audioContext.currentTime + 0.15);
+
+    // 2. The "Congratulations" Chime (Ascending Major Chord)
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+    notes.forEach((freq, i) => {
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.type = 'triangle'; // Brighter sound
+      osc.frequency.setValueAtTime(freq, audioContext.currentTime + 0.15 + (i * 0.08));
+      gain.gain.setValueAtTime(0, audioContext.currentTime + 0.15 + (i * 0.08));
+      gain.gain.linearRampToValueAtTime(0.15, audioContext.currentTime + 0.2 + (i * 0.08));
+      gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.8 + (i * 0.08));
+      osc.start(audioContext.currentTime + 0.15 + (i * 0.08));
+      osc.stop(audioContext.currentTime + 1.0 + (i * 0.08));
+    });
+  } catch (e) { console.error('Celebration audio error:', e); }
+};
+
+interface MessageData {
+  id: string;
+  payload: string;
+  type?: string;
+  sender?: string;
+}
 
 export default function SecretChat() {
   // --- Refs ---
@@ -123,14 +225,14 @@ export default function SecretChat() {
   const peerInstance = useRef<PeerType | null>(null);
   const currentCall = useRef<MediaConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const callTimeoutRef = useRef<any>(null);
+  const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const animationRef = useRef<number>(0);
   const callMenuRef = useRef<HTMLDivElement>(null);
   
   // Voice Note Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const recordingIntervalRef = useRef<any>(null);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number>(0);
@@ -143,7 +245,7 @@ export default function SecretChat() {
   const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null);
   const [roomKeyBase64, setRoomKeyBase64] = useState<string>('');
   const [isJoined, setIsJoined] = useState(false);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<MessageData[]>([]);
   const [inputText, setInputText] = useState('');
   const [viewingImage, setViewingImage] = useState<{ url: string; id: string } | null>(null);
   const [viewedImages, setViewedImages] = useState<Set<string>>(new Set());
@@ -168,6 +270,9 @@ export default function SecretChat() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioLevel, setAudioLevel] = useState(0);
 
+  // --- Celebration State ---
+  const [showCelebration, setShowCelebration] = useState(false);
+
   const callStateRef = useRef(callState);
   useEffect(() => { callStateRef.current = callState; }, [callState]);
 
@@ -182,7 +287,7 @@ export default function SecretChat() {
   const [initialLoad, setInitialLoad] = useState(true);
   const [animationPhase, setAnimationPhase] = useState(0);
 
-  const intervalRef = useRef<any>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load saved profile
   useEffect(() => {
@@ -271,7 +376,7 @@ export default function SecretChat() {
       setShowLanding(false);
       setRoomId(urlRoom);
       setSenderId(getOrCreateSenderId(urlRoom));
-      importKeyFromBase64(decodeURIComponent(urlKey) as string)
+      importKeyFromBase64(decodeURIComponent(urlKey))
         .then((key) => {
           setCryptoKey(key);
           setRoomKeyBase64(urlKey);
@@ -283,10 +388,11 @@ export default function SecretChat() {
         .catch((err) => console.error('Key import failed', err));
     }
   }, []);
+
   const initializePeer = async () => {
     if (peerInstance.current) return;
 
-    // DYNAMIC IMPORT: This prevents Vercel/Next.js SSR build errors
+    // DYNAMIC IMPORT: Prevents Vercel/Next.js SSR build errors
     const { default: Peer } = await import('peerjs');
 
     const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
@@ -308,7 +414,6 @@ export default function SecretChat() {
       debug: 2,
       config: { iceServers, iceCandidatePoolSize: 10 },
     });
-    // ... (keep the rest of the initializePeer function exactly as it was)
 
     peer.on('open', (id) => {
       myPeerIdRef.current = id;
@@ -346,9 +451,9 @@ export default function SecretChat() {
 
   const createRoom = async () => {
     const newRoomId = generateRoomId();
-    const key = await generateKey() as CryptoKey; // FIX: Explicit type assertion
+    const key = await generateKey();
     const rawExportedKey = await exportKeyToBase64(key);
-    const encodedKey = encodeURIComponent(rawExportedKey as string); // FIX: Explicit type assertion
+    const encodedKey = encodeURIComponent(rawExportedKey);
 
     setRoomId(newRoomId);
     setCryptoKey(key);
@@ -357,6 +462,12 @@ export default function SecretChat() {
     setIsJoined(true);
     setShowLanding(false);
     setShowRoomDetails(true);
+    
+    // --- TRIGGER CELEBRATION ---
+    setShowCelebration(true);
+    playCelebrationSound();
+    setTimeout(() => setShowCelebration(false), 4000); // Hide after 4 seconds
+
     window.history.pushState({}, '', `${window.location.pathname}#room=${newRoomId}&key=${encodedKey}`);
     setTimeout(() => initializePeer(), 500);
   };
@@ -367,7 +478,7 @@ export default function SecretChat() {
       return;
     }
     const normalizedRoomId = joinRoomId.toUpperCase();
-    importKeyFromBase64(decodeURIComponent(joinRoomKey) as string) // FIX: Explicit type assertion
+    importKeyFromBase64(decodeURIComponent(joinRoomKey))
       .then((key) => {
         setRoomId(normalizedRoomId);
         setCryptoKey(key);
@@ -397,9 +508,9 @@ export default function SecretChat() {
         const data = await res.json();
         if (data.success) {
           const decryptedMsgs = await Promise.all(
-            data.messages.map(async (msg: any) => {
+            data.messages.map(async (msg: MessageData) => {
               try {
-                const text = await decryptText(msg.payload, cryptoKey as CryptoKey);
+                const text = await decryptText(msg.payload, cryptoKey);
                 if (msg.type === 'system') {
                   if (text.startsWith('__SYS_PEER__:')) {
                     const pId = text.split('__SYS_PEER__:')[1];
@@ -436,7 +547,7 @@ export default function SecretChat() {
               } catch { return { ...msg, text: '[Error]' }; }
             })
           );
-          const validMsgs = decryptedMsgs.filter((m) => m !== null);
+          const validMsgs = decryptedMsgs.filter((m): m is MessageData & { text: string } => m !== null);
           validMsgs.sort((a, b) => Number(a.id) - Number(b.id));
           if (validMsgs.length > lastMessageCount && lastMessageCount > 0) playSound('receive');
           lastMessageCount = validMsgs.length;
@@ -453,7 +564,7 @@ export default function SecretChat() {
   const sendSystemMessage = async (text: string) => {
     if (!cryptoKey || !roomId) return;
     const messageId = Date.now().toString();
-    const encryptedPayload = await encryptText(text, cryptoKey as CryptoKey);
+    const encryptedPayload = await encryptText(text, cryptoKey);
     await fetch('/api/message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -464,7 +575,7 @@ export default function SecretChat() {
   const sendMessage = async () => {
     if (!inputText.trim() || !cryptoKey || !roomId) return;
     const messageId = Date.now().toString();
-    const encryptedPayload = await encryptText(inputText, cryptoKey as CryptoKey);
+    const encryptedPayload = await encryptText(inputText, cryptoKey);
     await fetch('/api/message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -575,16 +686,17 @@ export default function SecretChat() {
       const reader = new FileReader();
       reader.readAsDataURL(audioBlob);
       reader.onloadend = async () => {
-        const base64Audio = reader.result as string;
-        const messageId = Date.now().toString();
-        const encryptedPayload = await encryptText(base64Audio, cryptoKey as CryptoKey);
-        
-        await fetch('/api/message', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roomId, messageId, encryptedPayload, senderId, type: 'audio' }),
-        });
-        playSound('send');
+        if (typeof reader.result === 'string') {
+          const messageId = Date.now().toString();
+          const encryptedPayload = await encryptText(reader.result, cryptoKey);
+          
+          await fetch('/api/message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId, messageId, encryptedPayload, senderId, type: 'audio' }),
+          });
+          playSound('send');
+        }
       };
     } catch (error) {
       console.error("Voice note failed", error);
@@ -594,7 +706,7 @@ export default function SecretChat() {
   const loadAudio = async (msgId: string, encryptedBase64: string) => {
     if (decryptedAudios[msgId] || !cryptoKey) return;
     try {
-      const decryptedDataUrl = await decryptText(encryptedBase64, cryptoKey as CryptoKey);
+      const decryptedDataUrl = await decryptText(encryptedBase64, cryptoKey);
       setDecryptedAudios(prev => ({ ...prev, [msgId]: decryptedDataUrl }));
     } catch (error) {
       console.error("Audio decrypt failed", error);
@@ -783,7 +895,7 @@ export default function SecretChat() {
     try {
       const compressed = await compressImage(file, 800, 0.6);
       const messageId = Date.now().toString();
-      const encryptedPayload = await encryptText(compressed, cryptoKey as CryptoKey);
+      const encryptedPayload = await encryptText(compressed, cryptoKey);
       await fetch('/api/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -816,7 +928,7 @@ export default function SecretChat() {
   const openImage = async (msgId: string, encryptedBase64: string) => {
     if (!cryptoKey || viewedImages.has(msgId)) return;
     try {
-      const decryptedDataUrl = await decryptText(encryptedBase64, cryptoKey as CryptoKey);
+      const decryptedDataUrl = await decryptText(encryptedBase64, cryptoKey);
       setViewingImage({ url: decryptedDataUrl, id: msgId });
     } catch (error) { console.error('Decrypt failed', error); }
   };
@@ -940,46 +1052,62 @@ export default function SecretChat() {
   }
 
   // --- ROOM DETAILS MODAL ---
+    // --- ROOM DETAILS MODAL ---
   if (showRoomDetails && roomId && cryptoKey) {
     const roomUrl = roomId && roomKeyBase64 ? buildShareUrl(roomId, roomKeyBase64) : '';
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center p-4" onClick={handleTouch}>
-        <div className="bg-slate-900/90 backdrop-blur-xl border border-gray-800 rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Lock className="w-8 h-8 text-white" />
-            </div>
-            <h3 className="text-lg font-bold text-white font-sans">Room Created</h3>
-            <p className="text-gray-400 text-[11px] mt-1 font-sans">Share these details to invite someone</p>
-          </div>
-          <div className="space-y-3">
-            <div className="bg-slate-950/50 p-3 rounded-lg border border-gray-800">
-              <p className="text-[10px] text-gray-500 mb-1 font-sans">Room ID</p>
-              <div className="flex items-center justify-between">
-                <p className="text-indigo-400 font-mono text-[13px] font-bold">{roomId}</p>
-                <button onClick={() => copyToClipboard(roomId, 'Room ID')} className="text-gray-400 hover:text-white"><Copy size={14} /></button>
-              </div>
-            </div>
-            <div className="bg-slate-950/50 p-3 rounded-lg border border-gray-800">
-              <p className="text-[10px] text-gray-500 mb-1 font-sans">Secret Key</p>
-              <div className="flex items-center justify-between">
-                <p className="text-purple-400 font-mono text-[10px] truncate max-w-[180px]">{roomKeyBase64.substring(0, 30)}...</p>
-                <button onClick={() => copyToClipboard(roomKeyBase64, 'Secret Key')} className="text-gray-400 hover:text-white flex-shrink-0 ml-2"><Copy size={14} /></button>
-              </div>
-            </div>
-            <div className="bg-slate-950/50 p-3 rounded-lg border border-gray-800">
-              <p className="text-[10px] text-gray-500 mb-1 font-sans">Share Entry Link</p>
-              <div className="flex items-center justify-between">
-                <p className="text-gray-300 text-[10px] truncate max-w-[180px]">{roomUrl.substring(0, 25)}...</p>
-                <button onClick={() => copyToClipboard(roomUrl, 'Link')} className="text-gray-400 hover:text-white flex-shrink-0 ml-2"><Copy size={14} /></button>
-              </div>
+      <>
+        {/* Celebration Overlay for Room Creation */}
+        <Confetti active={showCelebration} />
+        {showCelebration && (
+          <div className="fixed inset-0 z-[101] flex items-center justify-center pointer-events-none">
+            <div className="bg-black/80 backdrop-blur-md px-10 py-6 rounded-3xl border-2 border-yellow-400/50 shadow-2xl animate-bounce">
+              <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-pink-400 to-purple-400 font-sans tracking-wider text-center">
+                🎉 Congratulations! 🎉
+              </h2>
+              <p className="text-white text-sm text-center mt-2 font-sans font-semibold">Secure Vault Successfully Created</p>
             </div>
           </div>
-          <button onClick={() => setShowRoomDetails(false)} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-3 rounded-xl transition-all text-[13px]">
-            Enter Chat Room
-          </button>
+        )}
+        
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center p-4" onClick={handleTouch}>
+          <div className="bg-slate-900/90 backdrop-blur-xl border border-gray-800 rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Lock className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-lg font-bold text-white font-sans">Room Created</h3>
+              <p className="text-gray-400 text-[11px] mt-1 font-sans">Share these details to invite someone</p>
+            </div>
+            <div className="space-y-3">
+              <div className="bg-slate-950/50 p-3 rounded-lg border border-gray-800">
+                <p className="text-[10px] text-gray-500 mb-1 font-sans">Room ID</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-indigo-400 font-mono text-[13px] font-bold">{roomId}</p>
+                  <button onClick={() => copyToClipboard(roomId, 'Room ID')} className="text-gray-400 hover:text-white"><Copy size={14} /></button>
+                </div>
+              </div>
+              <div className="bg-slate-950/50 p-3 rounded-lg border border-gray-800">
+                <p className="text-[10px] text-gray-500 mb-1 font-sans">Secret Key</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-purple-400 font-mono text-[10px] truncate max-w-[180px]">{roomKeyBase64.substring(0, 30)}...</p>
+                  <button onClick={() => copyToClipboard(roomKeyBase64, 'Secret Key')} className="text-gray-400 hover:text-white flex-shrink-0 ml-2"><Copy size={14} /></button>
+                </div>
+              </div>
+              <div className="bg-slate-950/50 p-3 rounded-lg border border-gray-800">
+                <p className="text-[10px] text-gray-500 mb-1 font-sans">Share Entry Link</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-gray-300 text-[10px] truncate max-w-[180px]">{roomUrl.substring(0, 25)}...</p>
+                  <button onClick={() => copyToClipboard(roomUrl, 'Link')} className="text-gray-400 hover:text-white flex-shrink-0 ml-2"><Copy size={14} /></button>
+                </div>
+              </div>
+            </div>
+            <button onClick={() => setShowRoomDetails(false)} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-3 rounded-xl transition-all text-[13px]">
+              Enter Chat Room
+            </button>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -1118,7 +1246,7 @@ export default function SecretChat() {
         )}
         {messages.map((msg) => {
           const isMe = msg.sender === senderId;
-          const avatar = isMe ? profilePic : peerProfiles[msg.sender];
+          const avatar = isMe ? profilePic : peerProfiles[msg.sender || ''];
           return (
             <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end space-x-2`}>
               {!isMe && (
@@ -1216,6 +1344,19 @@ export default function SecretChat() {
         <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-4 select-none backdrop-blur-xl" onClick={closeImageViewer}>
           <img src={viewingImage.url} alt="Secret" className="max-w-full max-h-[85vh] object-contain pointer-events-none rounded-lg" onContextMenu={(e) => e.preventDefault()} draggable={false} />
           <p className="absolute bottom-12 text-indigo-400 text-[10px] tracking-widest animate-pulse font-sans">TAP TO DESTROY</p>
+        </div>
+      )}
+
+      {/* --- CELEBRATION OVERLAY --- */}
+      <Confetti active={showCelebration} />
+      {showCelebration && (
+        <div className="fixed inset-0 z-[101] flex items-center justify-center pointer-events-none animate-bounce">
+          <div className="bg-black/60 backdrop-blur-md px-8 py-4 rounded-2xl border border-yellow-400/50 shadow-2xl transform scale-110 transition-all">
+            <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-pink-400 to-purple-400 font-sans tracking-wider text-center">
+              🎉 Congratulations! 🎉
+            </h2>
+            <p className="text-white text-[11px] text-center mt-1 font-sans">Secure Vault Successfully Created</p>
+          </div>
         </div>
       )}
     </div>
