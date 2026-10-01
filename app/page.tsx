@@ -4,54 +4,110 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { generateKey, exportKeyToBase64, importKeyFromBase64, encryptText, decryptText } from '@/lib/crypto';
 import { Phone, Video, PhoneOff, Mic, MicOff, VideoOff, User, CheckCircle, Image as ImageIcon, Send, Lock, MessageCircle, MoreVertical, Copy, Volume2, AlertCircle, X, Check } from 'lucide-react';
 
+// --- Web Audio helpers (one shared context; browsers cap how many can exist) ---
+type AudioWindow = Window & { webkitAudioContext?: typeof AudioContext };
+
+const createAudioContext = (): AudioContext => {
+  const Ctor = window.AudioContext || (window as AudioWindow).webkitAudioContext;
+  if (!Ctor) throw new Error('Web Audio is not supported in this browser');
+  return new Ctor();
+};
+
+let sharedAudioContext: AudioContext | null = null;
+const getSharedAudioContext = (): AudioContext => {
+  if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
+    sharedAudioContext = createAudioContext();
+  }
+  if (sharedAudioContext.state === 'suspended') void sharedAudioContext.resume();
+  return sharedAudioContext;
+};
+
 // --- Sound Effects System ---
 const playSound = (type: 'load' | 'send' | 'receive' | 'call') => {
   try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioContext = getSharedAudioContext();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
+    const t = audioContext.currentTime;
 
     if (type === 'load') {
-      oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime);
-      oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1);
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.3);
+      oscillator.frequency.setValueAtTime(523.25, t);
+      oscillator.frequency.setValueAtTime(659.25, t + 0.1);
+      gainNode.gain.setValueAtTime(0.1, t);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+      oscillator.start(t);
+      oscillator.stop(t + 0.3);
     } else if (type === 'send') {
-      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
-      gainNode.gain.setValueAtTime(0.05, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.1);
+      oscillator.frequency.setValueAtTime(880, t);
+      gainNode.gain.setValueAtTime(0.05, t);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+      oscillator.start(t);
+      oscillator.stop(t + 0.1);
     } else if (type === 'receive') {
-      oscillator.frequency.setValueAtTime(1046.5, audioContext.currentTime);
-      gainNode.gain.setValueAtTime(0.05, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.15);
+      oscillator.frequency.setValueAtTime(1046.5, t);
+      gainNode.gain.setValueAtTime(0.05, t);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+      oscillator.start(t);
+      oscillator.stop(t + 0.15);
     } else if (type === 'call') {
-      oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
+      oscillator.frequency.setValueAtTime(440, t);
+      gainNode.gain.setValueAtTime(0.1, t);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+      oscillator.start(t);
+      oscillator.stop(t + 0.5);
     }
   } catch (e) { console.error('Audio error:', e); }
 };
 
-// --- LocalStorage Helpers ---
+// --- Celebration Sound Synthesizer (Zero Dependencies) ---
+const playCelebrationSound = () => {
+  try {
+    const audioContext = getSharedAudioContext();
+    const t = audioContext.currentTime;
+
+    // 1. The "Poooooop" Sound (Rapid pitch drop)
+    const popOsc = audioContext.createOscillator();
+    const popGain = audioContext.createGain();
+    popOsc.connect(popGain);
+    popGain.connect(audioContext.destination);
+    popOsc.type = 'sine';
+    popOsc.frequency.setValueAtTime(800, t);
+    popOsc.frequency.exponentialRampToValueAtTime(100, t + 0.15);
+    popGain.gain.setValueAtTime(0.3, t);
+    popGain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+    popOsc.start(t);
+    popOsc.stop(t + 0.15);
+
+    // 2. The "Congratulations" Chime (Ascending Major Chord)
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+    notes.forEach((freq, i) => {
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t + 0.15 + i * 0.08);
+      gain.gain.setValueAtTime(0, t + 0.15 + i * 0.08);
+      gain.gain.linearRampToValueAtTime(0.15, t + 0.2 + i * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.8 + i * 0.08);
+      osc.start(t + 0.15 + i * 0.08);
+      osc.stop(t + 1.0 + i * 0.08);
+    });
+  } catch (e) { console.error('Celebration audio error:', e); }
+};
+
+// --- LocalStorage Helpers (guarded: storage can throw in private mode) ---
 const saveProfileToStorage = (profileBase64: string) => {
-  if (typeof window !== 'undefined') localStorage.setItem('secretChat_profile', profileBase64);
+  try { if (typeof window !== 'undefined') localStorage.setItem('secretChat_profile', profileBase64); } catch { /* storage unavailable */ }
 };
 const loadProfileFromStorage = (): string | null => {
-  if (typeof window !== 'undefined') return localStorage.getItem('secretChat_profile');
+  try { if (typeof window !== 'undefined') return localStorage.getItem('secretChat_profile'); } catch { /* storage unavailable */ }
   return null;
 };
 const clearProfileFromStorage = () => {
-  if (typeof window !== 'undefined') localStorage.removeItem('secretChat_profile');
+  try { if (typeof window !== 'undefined') localStorage.removeItem('secretChat_profile'); } catch { /* storage unavailable */ }
 };
 
 // --- Cryptographically strong room ID generator ---
@@ -68,15 +124,25 @@ const generateRoomId = (length = 8): string => {
   return out;
 };
 
+// Numeric, time-ordered, collision-resistant (Date.now() alone overwrote messages sent in the same ms)
+const generateMessageId = (): string =>
+  `${Date.now()}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+
 // --- Per-tab, per-room sender id ---
 const getOrCreateSenderId = (roomKey: string): string => {
-  if (typeof window === 'undefined') return `User_${Math.random().toString(36).substring(2, 7)}`;
-  const storageKey = `secretChat_sender_${roomKey}`;
-  const existing = sessionStorage.getItem(storageKey);
-  if (existing) return existing;
   const fresh = `User_${Math.random().toString(36).substring(2, 7)}`;
-  sessionStorage.setItem(storageKey, fresh);
+  if (typeof window === 'undefined') return fresh;
+  try {
+    const storageKey = `secretChat_sender_${roomKey}`;
+    const existing = sessionStorage.getItem(storageKey);
+    if (existing) return existing;
+    sessionStorage.setItem(storageKey, fresh);
+  } catch { /* storage unavailable */ }
   return fresh;
+};
+
+const safeDecode = (value: string): string => {
+  try { return decodeURIComponent(value); } catch { return value; }
 };
 
 // --- URL fragment helpers ---
@@ -116,7 +182,7 @@ const Confetti = ({ active }: { active: boolean }) => {
     const colors = ['#FFD700', '#FF4500', '#00FF7F', '#1E90FF', '#FF69B4', '#9400D3', '#FFFFFF'];
     particlesRef.current = [];
 
-    // "Boolean Force" Explosion: 150 particles bursting from the center
+    // Explosion: 150 particles bursting from the center
     for (let i = 0; i < 150; i++) {
       const angle = Math.random() * Math.PI * 2;
       const velocity = Math.random() * 15 + 5;
@@ -150,7 +216,7 @@ const Confetti = ({ active }: { active: boolean }) => {
           ctx.rotate((p.rotation * Math.PI) / 180);
           ctx.fillStyle = p.color;
           ctx.shadowBlur = 10;
-          ctx.shadowColor = p.color; // Shining effect
+          ctx.shadowColor = p.color;
           ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size / 2);
           ctx.restore();
         }
@@ -171,40 +237,44 @@ const Confetti = ({ active }: { active: boolean }) => {
   return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-[100]" />;
 };
 
-// --- Celebration Sound Synthesizer (Zero Dependencies) ---
-const playCelebrationSound = () => {
-  try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    
-    // 1. The "Poooooop" Sound (Rapid pitch drop)
-    const popOsc = audioContext.createOscillator();
-    const popGain = audioContext.createGain();
-    popOsc.connect(popGain);
-    popGain.connect(audioContext.destination);
-    popOsc.type = 'sine';
-    popOsc.frequency.setValueAtTime(800, audioContext.currentTime);
-    popOsc.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.15);
-    popGain.gain.setValueAtTime(0.3, audioContext.currentTime);
-    popGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
-    popOsc.start(audioContext.currentTime);
-    popOsc.stop(audioContext.currentTime + 0.15);
+// --- Voice-note level bars (restored: it was deleted in the last commit but still used) ---
+const AudioVisualizer = ({ level }: { level: number }) => {
+  return (
+    <div className="flex items-center justify-center space-x-1 h-8 w-32">
+      {[1, 2, 3, 4, 5, 6, 7].map((i) => {
+        const waveOffset = Math.sin(i * 1.2) * 25;
+        const h = Math.max(15, Math.min(100, level + waveOffset));
+        return (
+          <div
+            key={i}
+            className="w-1.5 bg-red-500 rounded-full transition-all duration-75 ease-out"
+            style={{ height: `${h}%` }}
+          />
+        );
+      })}
+    </div>
+  );
+};
 
-    // 2. The "Congratulations" Chime (Ascending Major Chord)
-    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
-    notes.forEach((freq, i) => {
-      const osc = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      osc.connect(gain);
-      gain.connect(audioContext.destination);
-      osc.type = 'triangle'; // Brighter sound
-      osc.frequency.setValueAtTime(freq, audioContext.currentTime + 0.15 + (i * 0.08));
-      gain.gain.setValueAtTime(0, audioContext.currentTime + 0.15 + (i * 0.08));
-      gain.gain.linearRampToValueAtTime(0.15, audioContext.currentTime + 0.2 + (i * 0.08));
-      gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.8 + (i * 0.08));
-      osc.start(audioContext.currentTime + 0.15 + (i * 0.08));
-      osc.stop(audioContext.currentTime + 1.0 + (i * 0.08));
-    });
-  } catch (e) { console.error('Celebration audio error:', e); }
+// --- Animated background: owns its own state so the 60fps animation doesn't re-render the whole chat ---
+const AnimatedBackground = () => {
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      setPhase((prev) => (prev + 1) % 360);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      <div className="absolute inset-0" style={{ background: `linear-gradient(${phase}deg, rgba(99, 102, 241, 0.3) 0%, rgba(168, 85, 247, 0.3) 50%, rgba(15, 23, 42, 0.4) 100%)` }}></div>
+      <div className="absolute inset-0 bg-gradient-to-bl from-purple-950/30 via-transparent to-indigo-950/30" style={{ opacity: Math.sin((phase * Math.PI) / 180) * 0.5 + 0.5, transform: `rotate(${phase}deg)` }}></div>
+    </div>
+  );
 };
 
 interface MessageData {
@@ -212,58 +282,83 @@ interface MessageData {
   payload: string;
   type?: string;
   sender?: string;
+  text?: string; // filled in after decryption
 }
 
+type CallKind = 'voice' | 'video';
+type CallWithPC = MediaConnection & { peerConnection?: RTCPeerConnection };
+interface IncomingCall { call: MediaConnection; type: CallKind; callerId: string }
+
+const errMsg = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
 export default function SecretChat() {
-  // --- Refs ---
+  // --- DOM refs ---
   const fileInputRef = useRef<HTMLInputElement>(null);
   const profileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const callMenuRef = useRef<HTMLDivElement>(null);
+
+  // --- Latest-value refs (async callbacks created once must not read stale state) ---
+  const cryptoKeyRef = useRef<CryptoKey | null>(null);
+  const roomIdRef = useRef<string | null>(null);
+  const senderIdRef = useRef<string>('');
+  const profilePicRef = useRef<string>('');
+  const remotePeerRef = useRef<string | null>(null);
+  const incomingCallRef = useRef<IncomingCall | null>(null);
+
+  // --- Peer / call refs ---
   const myPeerIdRef = useRef<string | null>(null);
   const peerInstance = useRef<PeerType | null>(null);
+  const initializingPeerRef = useRef(false);
+  const peerAnnounceRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentCall = useRef<MediaConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const animationRef = useRef<number>(0);
-  const callMenuRef = useRef<HTMLDivElement>(null);
-  
-  // Voice Note Refs
+  const processedSysRef = useRef<Set<string>>(new Set());
+
+  // --- Voice note refs ---
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingSecondsRef = useRef(0);
+  const cancelledRecordingRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
-  
-  const profilePicRef = useRef<string>('');
+
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- Core State ---
   const [roomId, setRoomId] = useState<string | null>(null);
   const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null);
-  const [roomKeyBase64, setRoomKeyBase64] = useState<string>('');
+  const [roomKeyBase64, setRoomKeyBase64] = useState<string>(''); // always the URL-encoded form
   const [isJoined, setIsJoined] = useState(false);
   const [messages, setMessages] = useState<MessageData[]>([]);
   const [inputText, setInputText] = useState('');
   const [viewingImage, setViewingImage] = useState<{ url: string; id: string } | null>(null);
   const [viewedImages, setViewedImages] = useState<Set<string>>(new Set());
   const [senderId, setSenderId] = useState<string>('');
-  const [profilePic, setProfilePic] = useState<string>('');
+  // Lazy init: the loading screen is always shown first, so this can't cause a hydration mismatch
+  const [profilePic, setProfilePic] = useState<string>(() => loadProfileFromStorage() ?? '');
   const [peerProfiles, setPeerProfiles] = useState<Record<string, string>>({});
   const [decryptedAudios, setDecryptedAudios] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState<{ text: string; kind: 'info' | 'error' } | null>(null);
 
   // --- Call State ---
   const [remotePeerId, setRemotePeerId] = useState<string | null>(null);
   const [callState, setCallState] = useState<'idle' | 'outgoing' | 'incoming' | 'connected' | 'declined' | 'failed'>('idle');
-  const [callType, setCallType] = useState<'voice' | 'video'>('video');
+  const [callType, setCallType] = useState<CallKind>('video');
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
-  const [incomingCallData, setIncomingCallData] = useState<{ call: MediaConnection; type: 'voice' | 'video'; callerId: string } | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState('Initializing...');
+  const [incomingCallData, setIncomingCallData] = useState<IncomingCall | null>(null);
+  const [, setConnectionStatus] = useState('Initializing...');
   const [callError, setCallError] = useState<string | null>(null);
   const [webrtcConnectionState, setWebrtcConnectionState] = useState<string>('new');
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
   // --- Voice Note State ---
   const [isRecording, setIsRecording] = useState(false);
@@ -273,9 +368,6 @@ export default function SecretChat() {
   // --- Celebration State ---
   const [showCelebration, setShowCelebration] = useState(false);
 
-  const callStateRef = useRef(callState);
-  useEffect(() => { callStateRef.current = callState; }, [callState]);
-
   // --- UI State ---
   const [showLanding, setShowLanding] = useState(true);
   const [joinRoomId, setJoinRoomId] = useState('');
@@ -284,24 +376,228 @@ export default function SecretChat() {
   const [showContent, setShowContent] = useState(false);
   const [showRoomDetails, setShowRoomDetails] = useState(false);
   const [showCallMenu, setShowCallMenu] = useState(false);
-  const [initialLoad, setInitialLoad] = useState(true);
-  const [animationPhase, setAnimationPhase] = useState(0);
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const callStateRef = useRef(callState);
+  useEffect(() => { callStateRef.current = callState; }, [callState]);
+  useEffect(() => { profilePicRef.current = profilePic; }, [profilePic]);
 
-  // Load saved profile
-  useEffect(() => {
-    const savedProfile = loadProfileFromStorage();
-    if (savedProfile) {
-      setProfilePic(savedProfile);
-      profilePicRef.current = savedProfile;
+  // =========================================================
+  // Helpers (declared in dependency order)
+  // =========================================================
+  const showNotice = useCallback((text: string, kind: 'info' | 'error' = 'info') => {
+    setNotice({ text, kind });
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 3000);
+  }, []);
+
+  // One place that encrypts + posts. Reads refs so it is never stale.
+  const postEncrypted = useCallback(async (plain: string, type: string, sender: string): Promise<boolean> => {
+    const key = cryptoKeyRef.current;
+    const room = roomIdRef.current;
+    if (!key || !room) return false;
+    try {
+      const encryptedPayload = await encryptText(plain, key);
+      const res = await fetch('/api/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId: room, messageId: generateMessageId(), encryptedPayload, senderId: sender, type }),
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Post failed', err);
+      return false;
     }
   }, []);
 
-  useEffect(() => {
-    profilePicRef.current = profilePic;
-  }, [profilePic]);
+  const sendSystemMessage = useCallback(
+    (text: string) => postEncrypted(text, 'system', 'SYSTEM'),
+    [postEncrypted]
+  );
 
+  const cleanupRecording = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = 0;
+    }
+    if (audioContextRef.current) {
+      void audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+  }, []);
+
+  const clearCallTimeout = useCallback(() => {
+    if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
+  }, []);
+
+  const endCall = useCallback(() => {
+    clearCallTimeout();
+    // Null the ref BEFORE closing: close() fires the 'close' event, which calls endCall again
+    const call = currentCall.current;
+    currentCall.current = null;
+    call?.close();
+    const pending = incomingCallRef.current;
+    incomingCallRef.current = null;
+    pending?.call.close();
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
+    setLocalStream(null);
+    setRemoteStream(null);
+    setCallState('idle');
+    setIncomingCallData(null);
+    setIsMuted(false);
+    setIsVideoOff(false);
+    setCallError(null);
+    setWebrtcConnectionState('new');
+  }, [clearCallTimeout]);
+
+  // User pressed the red button: tell the other side, then tear down
+  const hangUp = useCallback(() => {
+    if (callStateRef.current !== 'idle') {
+      void sendSystemMessage(`__SYS_CALL_END__::${senderIdRef.current}`);
+    }
+    endCall();
+  }, [endCall, sendSystemMessage]);
+
+  const declineCall = useCallback(() => {
+    clearCallTimeout();
+    if (incomingCallRef.current) {
+      void sendSystemMessage(`__SYS_CALL_DECLINED__::${senderIdRef.current}`);
+    }
+    endCall();
+  }, [clearCallTimeout, endCall, sendSystemMessage]);
+
+  const wireCall = useCallback((call: MediaConnection) => {
+    currentCall.current = call;
+    const pc = (call as CallWithPC).peerConnection;
+    if (pc) {
+      pc.addEventListener('connectionstatechange', () => {
+        setWebrtcConnectionState(pc.connectionState);
+        if (pc.connectionState === 'failed') {
+          showNotice('Call connection lost', 'error');
+          endCall();
+        } else if (pc.connectionState === 'closed') {
+          endCall();
+        } else if (pc.connectionState === 'disconnected') {
+          setCallError('Connection degraded. Reconnecting...');
+        } else if (pc.connectionState === 'connected') {
+          setCallError(null);
+        }
+      });
+    }
+    call.on('stream', (stream) => {
+      setRemoteStream(stream);
+      setCallState('connected');
+      clearCallTimeout();
+    });
+    call.on('close', () => endCall());
+    call.on('error', () => {
+      showNotice('Call failed. Please try again.', 'error');
+      endCall();
+    });
+  }, [clearCallTimeout, endCall, showNotice]);
+
+  const initializePeer = useCallback(async () => {
+    if (peerInstance.current || initializingPeerRef.current) return;
+    initializingPeerRef.current = true;
+    try {
+      // DYNAMIC IMPORT: PeerJS touches browser globals, so it must not load during SSR/build
+      const { default: Peer } = await import('peerjs');
+
+      const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+      const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
+      const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+
+      const iceServers: RTCIceServer[] = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ];
+      if (turnUrl && turnUsername && turnCredential) {
+        iceServers.push({ urls: turnUrl, username: turnUsername, credential: turnCredential });
+      }
+
+      const peer = new Peer({
+        host: '0.peerjs.com',
+        port: 443,
+        secure: true,
+        debug: 2,
+        config: { iceServers, iceCandidatePoolSize: 10 },
+      });
+
+      peer.on('open', (id) => {
+        myPeerIdRef.current = id;
+        setConnectionStatus('Network Connected. Waiting for peer...');
+        const announce = () => { void sendSystemMessage(`__SYS_PEER__::${senderIdRef.current}::${id}`); };
+        announce();
+        // Messages expire after 5 minutes, so re-announce to stay discoverable
+        if (peerAnnounceRef.current) clearInterval(peerAnnounceRef.current);
+        peerAnnounceRef.current = setInterval(announce, 120000);
+      });
+
+      peer.on('call', (call) => {
+        if (callStateRef.current !== 'idle') { call.close(); return; }
+        const meta = call.metadata as { type?: CallKind; callerId?: string } | undefined;
+        const type: CallKind = meta?.type === 'voice' ? 'voice' : 'video';
+        const data: IncomingCall = { call, type, callerId: meta?.callerId || 'Unknown' };
+        incomingCallRef.current = data;
+        setIncomingCallData(data);
+        setCallType(type);
+        setCallState('incoming');
+        playSound('call');
+
+        clearCallTimeout();
+        callTimeoutRef.current = setTimeout(() => {
+          if (callStateRef.current === 'incoming') declineCall();
+        }, 30000);
+      });
+
+      peer.on('disconnected', () => {
+        setConnectionStatus('Reconnecting...');
+        setTimeout(() => { if (!peer.destroyed) peer.reconnect(); }, 2000);
+      });
+
+      peer.on('error', (err) => {
+        console.error('PeerJS Error:', err);
+        setConnectionStatus('Network Error');
+        if ((err as { type?: string }).type === 'peer-unavailable' && callStateRef.current === 'outgoing') {
+          showNotice('Peer is unavailable right now', 'error');
+          endCall();
+        }
+      });
+
+      peerInstance.current = peer;
+    } finally {
+      initializingPeerRef.current = false;
+    }
+  }, [sendSystemMessage, clearCallTimeout, declineCall, endCall, showNotice]);
+
+  // Set every piece of room state (and the matching refs) in one place
+  const applyRoom = useCallback((room: string, key: CryptoKey, encodedKey: string) => {
+    const sid = getOrCreateSenderId(room);
+    roomIdRef.current = room;
+    cryptoKeyRef.current = key;
+    senderIdRef.current = sid;
+    setRoomId(room);
+    setCryptoKey(key);
+    setRoomKeyBase64(encodedKey);
+    setSenderId(sid);
+    setIsJoined(true);
+    setShowLanding(false);
+  }, []);
+
+  // =========================================================
+  // Effects
+  // =========================================================
   useEffect(() => {
     playSound('load');
     const timer = setTimeout(() => {
@@ -309,22 +605,6 @@ export default function SecretChat() {
       setTimeout(() => setShowContent(true), 300);
     }, 1500);
     return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (isJoined && initialLoad && roomId) {
-      const loadTimer = setTimeout(() => setInitialLoad(false), 30000);
-      return () => clearTimeout(loadTimer);
-    }
-  }, [isJoined, initialLoad, roomId]);
-
-  useEffect(() => {
-    const animate = () => {
-      setAnimationPhase((prev) => (prev + 1) % 360);
-      animationRef.current = requestAnimationFrame(animate);
-    };
-    animationRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationRef.current);
   }, []);
 
   useEffect(() => {
@@ -341,365 +621,309 @@ export default function SecretChat() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const cleanupRecording = useCallback(() => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = 0;
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (recordingIntervalRef.current) {
-      clearInterval(recordingIntervalRef.current);
-      recordingIntervalRef.current = null;
-    }
-  }, []);
+  // Attach streams to <video> elements AFTER they render (the stream can arrive before the element exists)
+  useEffect(() => {
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+  }, [remoteStream, callState, callType]);
+  useEffect(() => {
+    if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+  }, [localStream, callState, callType]);
 
+  // Teardown on unmount
   useEffect(() => {
     return () => {
-      if (currentCall.current) currentCall.current.close();
-      if (localStreamRef.current) localStreamRef.current.getTracks().forEach((t) => t.stop());
-      if (peerInstance.current) peerInstance.current.destroy();
+      currentCall.current?.close();
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      peerInstance.current?.destroy();
+      peerInstance.current = null; // otherwise a re-mount (React StrictMode) thinks a peer still exists
+      initializingPeerRef.current = false;
+      if (peerAnnounceRef.current) clearInterval(peerAnnounceRef.current);
       if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
       cleanupRecording();
     };
   }, [cleanupRecording]);
 
+  // Open a room straight from a share link (#room=...&key=...)
   useEffect(() => {
-    const { room: urlRoom, key: urlKey } = readRoomAndKeyFromLocation();
-    if (urlRoom && urlKey) {
-      setShowLanding(false);
-      setRoomId(urlRoom);
-      setSenderId(getOrCreateSenderId(urlRoom));
-      importKeyFromBase64(decodeURIComponent(urlKey))
-        .then((key) => {
-          setCryptoKey(key);
-          setRoomKeyBase64(urlKey);
-          setIsJoined(true);
-          setInitialLoad(false);
-          setConnectionStatus('Connecting to Secure Network...');
-          setTimeout(() => initializePeer(), 500);
-        })
-        .catch((err) => console.error('Key import failed', err));
-    }
-  }, []);
-
-  const initializePeer = async () => {
-    if (peerInstance.current) return;
-
-    // DYNAMIC IMPORT: Prevents Vercel/Next.js SSR build errors
-    const { default: Peer } = await import('peerjs');
-
-    const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
-    const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
-    const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
-
-    const iceServers: RTCIceServer[] = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ];
-    if (turnUrl && turnUsername && turnCredential) {
-      iceServers.push({ urls: turnUrl, username: turnUsername, credential: turnCredential });
-    }
-
-    const peer = new Peer(undefined, {
-      host: '0.peerjs.com',
-      port: 443,
-      secure: true,
-      debug: 2,
-      config: { iceServers, iceCandidatePoolSize: 10 },
-    });
-
-    peer.on('open', (id) => {
-      myPeerIdRef.current = id;
-      setConnectionStatus('Network Connected. Waiting for peer...');
-      sendSystemMessage(`__SYS_PEER__:${id}`);
-    });
-
-    peer.on('call', (call) => {
-      if (callStateRef.current !== 'idle') { call.close(); return; }
-      const type = call.metadata?.type || 'video';
-      const callerId = call.metadata?.callerId || 'Unknown';
-      setIncomingCallData({ call, type, callerId });
-      setCallType(type);
-      setCallState('incoming');
-      playSound('call');
-
-      if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-      callTimeoutRef.current = setTimeout(() => {
-        if (callStateRef.current === 'incoming') declineCall();
-      }, 30000);
-    });
-
-    peer.on('disconnected', () => {
-      setConnectionStatus('Reconnecting...');
-      setTimeout(() => peer.reconnect(), 2000);
-    });
-
-    peer.on('error', (err) => {
-      console.error('PeerJS Error:', err);
-      setConnectionStatus('Network Error');
-    });
-
-    peerInstance.current = peer;
-  };
-
-  const createRoom = async () => {
-    const newRoomId = generateRoomId();
-    const key = await generateKey();
-    const rawExportedKey = await exportKeyToBase64(key);
-    const encodedKey = encodeURIComponent(rawExportedKey);
-
-    setRoomId(newRoomId);
-    setCryptoKey(key);
-    setRoomKeyBase64(encodedKey);
-    setSenderId(getOrCreateSenderId(newRoomId));
-    setIsJoined(true);
-    setShowLanding(false);
-    setShowRoomDetails(true);
-    
-    // --- TRIGGER CELEBRATION ---
-    setShowCelebration(true);
-    playCelebrationSound();
-    setTimeout(() => setShowCelebration(false), 4000); // Hide after 4 seconds
-
-    window.history.pushState({}, '', `${window.location.pathname}#room=${newRoomId}&key=${encodedKey}`);
-    setTimeout(() => initializePeer(), 500);
-  };
-
-  const joinRoom = async () => {
-    if (!joinRoomId.trim() || !joinRoomKey.trim()) {
-      setCallError('Please enter both Room ID and Secret Key');
-      return;
-    }
-    const normalizedRoomId = joinRoomId.toUpperCase();
-    importKeyFromBase64(decodeURIComponent(joinRoomKey))
-      .then((key) => {
-        setRoomId(normalizedRoomId);
-        setCryptoKey(key);
-        setRoomKeyBase64(joinRoomKey);
-        setSenderId(getOrCreateSenderId(normalizedRoomId));
-        setIsJoined(true);
-        setInitialLoad(false);
-        setShowLanding(false);
-        setConnectionStatus('Connecting...');
-        window.history.pushState({}, '', `${window.location.pathname}#room=${normalizedRoomId}&key=${encodeURIComponent(joinRoomKey)}`);
-        setTimeout(() => initializePeer(), 500);
+    const { room, key } = readRoomAndKeyFromLocation();
+    if (!room || !key) return;
+    let cancelled = false;
+    importKeyFromBase64(safeDecode(key))
+      .then((imported) => {
+        if (cancelled) return;
+        applyRoom(room, imported, encodeURIComponent(safeDecode(key)));
+        setConnectionStatus('Connecting to Secure Network...');
+        void initializePeer();
       })
       .catch((err) => {
-        setCallError('Invalid Secret Key. Please check and try again.');
         console.error('Key import failed', err);
+        showNotice('This room link is invalid or incomplete', 'error');
       });
-  };
+    return () => { cancelled = true; };
+  }, [applyRoom, initializePeer, showNotice]);
 
   // --- POLLING ENGINE ---
   useEffect(() => {
     if (!isJoined || !roomId || !cryptoKey) return;
-    let lastMessageCount = 0;
+    let active = true;
+    let inFlight = false;
+    let firstFetch = true;
+    let lastSignature = '';
+    const seenIds = new Set<string>();
 
-    const fetchMessages = async () => {
-      try {
-        const res = await fetch(`/api/message?roomId=${roomId}`);
-        const data = await res.json();
-        if (data.success) {
-          const decryptedMsgs = await Promise.all(
-            data.messages.map(async (msg: MessageData) => {
-              try {
-                const text = await decryptText(msg.payload, cryptoKey);
-                if (msg.type === 'system') {
-                  if (text.startsWith('__SYS_PEER__:')) {
-                    const pId = text.split('__SYS_PEER__:')[1];
-                    if (pId !== myPeerIdRef.current) {
-                      setRemotePeerId(pId);
-                      setConnectionStatus('Peer Connected & Encrypted');
-                      sendSystemMessage('__SYS_REQUEST_PROFILES__');
-                    }
-                    return null;
-                  }
-                  if (text === '__SYS_REQUEST_PROFILES__') {
-                    if (profilePicRef.current) {
-                      sendSystemMessage(`__SYS_PROFILE__::${senderId}::${profilePicRef.current}`);
-                    }
-                    return null;
-                  }
-                  if (text.startsWith('__SYS_PROFILE__::')) {
-                    const payload = text.substring('__SYS_PROFILE__::'.length);
-                    const firstColonIndex = payload.indexOf('::');
-                    if (firstColonIndex !== -1) {
-                      const pSender = payload.substring(0, firstColonIndex);
-                      const pBase64 = payload.substring(firstColonIndex + 2);
-                      setPeerProfiles((prev) => ({ ...prev, [pSender]: pBase64 }));
-                    }
-                    return null;
-                  }
-                  if (text === '__SYS_CALL_DECLINED__') {
-                    setCallState('declined');
-                    setTimeout(() => setCallState('idle'), 3000);
-                    return null;
-                  }
-                }
-                return { ...msg, text };
-              } catch { return { ...msg, text: '[Error]' }; }
-            })
-          );
-          const validMsgs = decryptedMsgs.filter((m): m is MessageData & { text: string } => m !== null);
-          validMsgs.sort((a, b) => Number(a.id) - Number(b.id));
-          if (validMsgs.length > lastMessageCount && lastMessageCount > 0) playSound('receive');
-          lastMessageCount = validMsgs.length;
-          setMessages(validMsgs);
+    const handleSystemText = (text: string) => {
+      const me = senderIdRef.current;
+      if (text.startsWith('__SYS_PEER__::')) {
+        const [, sender, pId] = text.split('::');
+        if (sender && pId && sender !== me && pId !== myPeerIdRef.current) {
+          const changed = remotePeerRef.current !== pId;
+          remotePeerRef.current = pId;
+          setRemotePeerId(pId);
+          setConnectionStatus('Peer Connected & Encrypted');
+          if (changed) void sendSystemMessage(`__SYS_REQUEST_PROFILES__::${me}`);
         }
-      } catch (err) { console.error('Failed to fetch messages', err); }
+      } else if (text.startsWith('__SYS_REQUEST_PROFILES__')) {
+        const requester = text.split('::')[1];
+        if (requester !== me && profilePicRef.current) {
+          void sendSystemMessage(`__SYS_PROFILE__::${me}::${profilePicRef.current}`);
+        }
+      } else if (text.startsWith('__SYS_PROFILE__::')) {
+        const payload = text.substring('__SYS_PROFILE__::'.length);
+        const idx = payload.indexOf('::');
+        if (idx !== -1) {
+          const pSender = payload.substring(0, idx);
+          const pBase64 = payload.substring(idx + 2);
+          setPeerProfiles((prev) => ({ ...prev, [pSender]: pBase64 }));
+        }
+      } else if (text.startsWith('__SYS_CALL_DECLINED__')) {
+        if (text.split('::')[1] !== me && callStateRef.current === 'outgoing') {
+          endCall();
+          showNotice('Call declined', 'error');
+        }
+      } else if (text.startsWith('__SYS_CALL_END__')) {
+        if (text.split('::')[1] !== me && callStateRef.current !== 'idle') {
+          endCall();
+          showNotice('Call ended');
+        }
+      }
     };
 
-    fetchMessages();
-    intervalRef.current = setInterval(fetchMessages, 1000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isJoined, roomId, cryptoKey, senderId]);
+    const fetchMessages = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const res = await fetch(`/api/message?roomId=${encodeURIComponent(roomId)}`);
+        const data = await res.json();
+        if (!active || !data.success) return;
 
-  const sendSystemMessage = async (text: string) => {
-    if (!cryptoKey || !roomId) return;
-    const messageId = Date.now().toString();
-    const encryptedPayload = await encryptText(text, cryptoKey);
-    await fetch('/api/message', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomId, messageId, encryptedPayload, senderId: 'SYSTEM', type: 'system' }),
-    });
+        const raw = (data.messages as MessageData[]).slice().sort((a, b) => Number(a.id) - Number(b.id));
+        const decrypted = await Promise.all(
+          raw.map(async (msg) => {
+            try {
+              return { ...msg, text: await decryptText(msg.payload, cryptoKey) };
+            } catch {
+              return { ...msg, text: '[Error]' };
+            }
+          })
+        );
+        if (!active) return;
+
+        const visible: MessageData[] = [];
+        let gotNewFromOthers = false;
+        for (const msg of decrypted) {
+          if (msg.type === 'system') {
+            // Each system message is acted on exactly once (they used to be re-run every second)
+            if (!processedSysRef.current.has(msg.id)) {
+              processedSysRef.current.add(msg.id);
+              handleSystemText(msg.text);
+            }
+            continue;
+          }
+          visible.push(msg);
+          if (!seenIds.has(msg.id)) {
+            seenIds.add(msg.id);
+            if (!firstFetch && msg.sender !== senderIdRef.current) gotNewFromOthers = true;
+          }
+        }
+        firstFetch = false;
+        if (gotNewFromOthers) playSound('receive');
+
+        // Only touch state (and trigger auto-scroll) when something actually changed
+        const signature = visible.map((m) => m.id).join(',');
+        if (signature !== lastSignature) {
+          lastSignature = signature;
+          setMessages(visible);
+        }
+      } catch (err) {
+        console.error('Failed to fetch messages', err);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void fetchMessages();
+    const interval = setInterval(fetchMessages, 1000);
+    return () => { active = false; clearInterval(interval); };
+  }, [isJoined, roomId, cryptoKey, sendSystemMessage, endCall, showNotice]);
+
+  // =========================================================
+  // Room actions
+  // =========================================================
+  const createRoom = async () => {
+    try {
+      const newRoomId = generateRoomId();
+      const key = await generateKey();
+      const encodedKey = encodeURIComponent(await exportKeyToBase64(key));
+
+      applyRoom(newRoomId, key, encodedKey);
+      setShowRoomDetails(true);
+
+      // --- TRIGGER CELEBRATION ---
+      setShowCelebration(true);
+      playCelebrationSound();
+      setTimeout(() => setShowCelebration(false), 4000);
+
+      window.history.pushState({}, '', `${window.location.pathname}#room=${newRoomId}&key=${encodedKey}`);
+      void initializePeer();
+    } catch (err) {
+      console.error('Create room failed', err);
+      showNotice('Could not create a secure room. Encryption needs HTTPS.', 'error');
+    }
   };
 
-  const sendMessage = async () => {
-    if (!inputText.trim() || !cryptoKey || !roomId) return;
-    const messageId = Date.now().toString();
-    const encryptedPayload = await encryptText(inputText, cryptoKey);
-    await fetch('/api/message', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomId, messageId, encryptedPayload, senderId, type: 'text' }),
-    });
-    setInputText('');
-    playSound('send');
+  const joinRoom = async () => {
+    if (!joinRoomId.trim() || !joinRoomKey.trim()) {
+      showNotice('Please enter both Room ID and Secret Key', 'error');
+      return;
+    }
+    const normalizedRoomId = joinRoomId.trim().toUpperCase();
+    const rawKey = safeDecode(joinRoomKey.trim());
+    try {
+      const key = await importKeyFromBase64(rawKey);
+      const encodedKey = encodeURIComponent(rawKey);
+      applyRoom(normalizedRoomId, key, encodedKey);
+      setConnectionStatus('Connecting...');
+      window.history.pushState({}, '', `${window.location.pathname}#room=${normalizedRoomId}&key=${encodedKey}`);
+      void initializePeer();
+    } catch (err) {
+      console.error('Key import failed', err);
+      showNotice('Invalid Secret Key. Please check and try again.', 'error');
+    }
   };
 
   const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCallError(`${label} copied!`);
-    setTimeout(() => setCallError(null), 2000);
+    navigator.clipboard.writeText(text)
+      .then(() => showNotice(`${label} copied!`))
+      .catch(() => showNotice('Copy failed. Please copy it manually.', 'error'));
+  };
+
+  // =========================================================
+  // Messaging
+  // =========================================================
+  const sendMessage = async () => {
+    if (!inputText.trim()) return;
+    const ok = await postEncrypted(inputText, 'text', senderIdRef.current);
+    if (ok) {
+      setInputText('');
+      playSound('send');
+    } else {
+      showNotice('Message failed to send. Check your connection.', 'error');
+    }
   };
 
   // --- VOICE NOTE FUNCTIONS ---
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state === 'recording') recorder.stop();
+    if (recordingIntervalRef.current) { clearInterval(recordingIntervalRef.current); recordingIntervalRef.current = null; }
+    setIsRecording(false);
+    setAudioLevel(0);
+  };
+
+  const cancelRecording = () => {
+    cancelledRecordingRef.current = true; // checked in onstop, so late data chunks are discarded
+    audioChunksRef.current = [];
+    stopRecording();
+    cleanupRecording();
+  };
+
+  const sendVoiceNote = async (audioBlob: Blob) => {
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(audioBlob);
+      });
+      const ok = await postEncrypted(dataUrl, 'audio', senderIdRef.current);
+      if (ok) playSound('send');
+      else showNotice('Voice note failed to send (it may be too large).', 'error');
+    } catch (error) {
+      console.error('Voice note failed', error);
+      showNotice('Voice note failed to send.', 'error');
+    }
+  };
+
   const startRecording = async () => {
+    if (isRecording) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+      const audioContext = createAudioContext();
       audioContextRef.current = audioContext;
       const analyser = audioContext.createAnalyser();
       analyserRef.current = analyser;
       analyser.fftSize = 256;
-      
-      const source = audioContext.createMediaStreamSource(stream);
-      source.connect(analyser);
-      
+      audioContext.createMediaStreamSource(stream).connect(analyser);
+
       const updateVisualizer = () => {
         if (!analyserRef.current) return;
         const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
         analyserRef.current.getByteFrequencyData(dataArray);
-        
         let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
-        }
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
         const average = sum / dataArray.length;
-        const volume = Math.min(100, Math.max(0, (average / 255) * 100 * 2.5)); 
-        
-        setAudioLevel(volume);
+        setAudioLevel(Math.min(100, Math.max(0, (average / 255) * 100 * 2.5)));
         animationFrameRef.current = requestAnimationFrame(updateVisualizer);
       };
       updateVisualizer();
 
-      const options = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : {};
-      mediaRecorderRef.current = new MediaRecorder(stream, options);
+      // Low bitrate keeps a 60s note under the ~1MB request limit of the Redis REST API
+      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t));
+      const recorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 24000 });
+      mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
+      cancelledRecordingRef.current = false;
 
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && !cancelledRecordingRef.current) audioChunksRef.current.push(event.data);
       };
 
-      mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || 'audio/webm' });
-        if (audioBlob.size > 0) {
-          await sendVoiceNote(audioBlob);
-        }
+      recorder.onstop = async () => {
+        const cancelled = cancelledRecordingRef.current;
+        cancelledRecordingRef.current = false;
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        audioChunksRef.current = [];
         cleanupRecording();
+        if (!cancelled && blob.size > 0) await sendVoiceNote(blob);
       };
 
-      mediaRecorderRef.current.start();
+      recorder.start();
       setIsRecording(true);
       setRecordingTime(0);
-      
+      recordingSecondsRef.current = 0;
+
       recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => {
-          if (prev >= 59) {
-            stopRecording();
-            return 60;
-          }
-          return prev + 1;
-        });
+        recordingSecondsRef.current += 1;
+        setRecordingTime(recordingSecondsRef.current);
+        if (recordingSecondsRef.current >= 60) stopRecording(); // auto-send at 60s
       }, 1000);
-
-    } catch (err: any) {
-      console.error("Microphone access denied:", err);
-      setCallError("Microphone access denied. Please check browser permissions.");
-      setTimeout(() => setCallError(null), 3000);
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setAudioLevel(0);
-    }
-  };
-
-  const cancelRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setAudioLevel(0);
-      audioChunksRef.current = [];
+    } catch (err) {
+      console.error('Microphone access denied:', err);
       cleanupRecording();
-    }
-  };
-
-  const sendVoiceNote = async (audioBlob: Blob) => {
-    if (!cryptoKey || !roomId) return;
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(audioBlob);
-      reader.onloadend = async () => {
-        if (typeof reader.result === 'string') {
-          const messageId = Date.now().toString();
-          const encryptedPayload = await encryptText(reader.result, cryptoKey);
-          
-          await fetch('/api/message', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roomId, messageId, encryptedPayload, senderId, type: 'audio' }),
-          });
-          playSound('send');
-        }
-      };
-    } catch (error) {
-      console.error("Voice note failed", error);
+      showNotice('Microphone access denied. Please check browser permissions.', 'error');
     }
   };
 
@@ -707,17 +931,18 @@ export default function SecretChat() {
     if (decryptedAudios[msgId] || !cryptoKey) return;
     try {
       const decryptedDataUrl = await decryptText(encryptedBase64, cryptoKey);
-      setDecryptedAudios(prev => ({ ...prev, [msgId]: decryptedDataUrl }));
+      setDecryptedAudios((prev) => ({ ...prev, [msgId]: decryptedDataUrl }));
     } catch (error) {
-      console.error("Audio decrypt failed", error);
+      console.error('Audio decrypt failed', error);
     }
   };
 
-  // --- CALL FUNCTIONS ---
-  const startCall = async (type: 'voice' | 'video') => {
+  // =========================================================
+  // Call actions
+  // =========================================================
+  const startCall = async (type: CallKind) => {
     if (!remotePeerId || !peerInstance.current) {
-      setCallError('Waiting for peer to join the room first...');
-      setTimeout(() => setCallError(null), 3000);
+      showNotice('Waiting for the other person to join the room first...', 'error');
       return;
     }
     if (callStateRef.current !== 'idle') return;
@@ -731,141 +956,63 @@ export default function SecretChat() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
       localStreamRef.current = stream;
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      setLocalStream(stream);
 
-      const call = peerInstance.current.call(remotePeerId, stream, { metadata: { type, callerId: senderId } });
-      currentCall.current = call;
+      const call = peerInstance.current.call(remotePeerId, stream, { metadata: { type, callerId: senderIdRef.current } });
+      wireCall(call);
 
-      const pc = (call as any).peerConnection;
-      if (pc) {
-        pc.addEventListener('connectionstatechange', () => {
-          setWebrtcConnectionState(pc.connectionState);
-          if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-            setCallError('Connection degraded. Reconnecting...');
-          } else if (pc.connectionState === 'connected') {
-            setCallError(null);
-          }
-        });
-      }
-
-      if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+      clearCallTimeout();
       callTimeoutRef.current = setTimeout(() => {
         if (callStateRef.current === 'outgoing') {
-          setCallError('Call timed out. No answer.');
-          setCallState('failed');
-          endCall();
+          showNotice('No answer', 'error');
+          hangUp();
         }
-      }, 15000);
-
-      call.on('stream', (remoteStream) => {
-        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
-        setCallState('connected');
-        if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-      });
-
-      call.on('close', () => endCall());
-      call.on('error', () => {
-        setCallError('Call failed. Please try again.');
-        setCallState('failed');
-        endCall();
-      });
-    } catch (err: any) {
-      setCallError(`Camera/Mic blocked: ${err.message}. Ensure you are on HTTPS or localhost.`);
+      }, 30000);
+    } catch (err) {
+      showNotice(`Camera/Mic blocked: ${errMsg(err)}. Use HTTPS and allow permissions.`, 'error');
       endCall();
     }
   };
 
   const acceptCall = async () => {
-    if (!incomingCallData) return;
-    const { call, type } = incomingCallData;
-    setCallType(type);
-    setCallError(null);
-
-    if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
+    const data = incomingCallRef.current;
+    if (!data) return;
+    clearCallTimeout();
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: data.type === 'video', audio: true });
       localStreamRef.current = stream;
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      setLocalStream(stream);
+      data.call.answer(stream);
 
-      call.answer(stream);
-      currentCall.current = call;
-
-      const pc = (call as any).peerConnection;
-      if (pc) {
-        pc.addEventListener('connectionstatechange', () => {
-          setWebrtcConnectionState(pc.connectionState);
-          if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-            setCallError('Connection degraded. Reconnecting...');
-          } else if (pc.connectionState === 'connected') {
-            setCallError(null);
-          }
-        });
-      }
-
-      call.on('stream', (remoteStream) => {
-        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
-        setCallState('connected');
-      });
-      call.on('close', () => endCall());
-      call.on('error', () => {
-        setCallError('Call failed. Please try again.');
-        setCallState('failed');
-        endCall();
-      });
-
+      incomingCallRef.current = null;
       setIncomingCallData(null);
-    } catch (err: any) {
-      setCallError(`Camera/Mic blocked: ${err.message}. Check browser settings.`);
+      setCallType(data.type);
+      setCallState('connected');
+      wireCall(data.call);
+    } catch (err) {
+      showNotice(`Camera/Mic blocked: ${errMsg(err)}. Check browser settings.`, 'error');
       declineCall();
     }
   };
 
-  const declineCall = () => {
-    if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
-    if (incomingCallData) {
-      incomingCallData.call.close();
-      sendSystemMessage('__SYS_CALL_DECLINED__');
-      setIncomingCallData(null);
-    }
-    setCallState('idle');
-    setCallError(null);
-  };
-
-  const endCall = () => {
-    if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
-    if (currentCall.current) { currentCall.current.close(); currentCall.current = null; }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-    }
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-
-    setCallState('idle');
-    setIncomingCallData(null);
-    setIsMuted(false);
-    setIsVideoOff(false);
-    setCallError(null);
-    setWebrtcConnectionState('new');
-  };
-
   const toggleMute = useCallback(() => {
     if (!localStreamRef.current) return;
-    const audioTracks = localStreamRef.current.getAudioTracks();
     const nextMuted = !isMuted;
-    audioTracks.forEach((track) => { track.enabled = !nextMuted; });
+    localStreamRef.current.getAudioTracks().forEach((track) => { track.enabled = !nextMuted; });
     setIsMuted(nextMuted);
   }, [isMuted]);
 
   const toggleVideo = useCallback(() => {
     if (!localStreamRef.current) return;
-    const videoTracks = localStreamRef.current.getVideoTracks();
     const nextOff = !isVideoOff;
-    videoTracks.forEach((track) => { track.enabled = !nextOff; });
+    localStreamRef.current.getVideoTracks().forEach((track) => { track.enabled = !nextOff; });
     setIsVideoOff(nextOff);
   }, [isVideoOff]);
 
+  // =========================================================
+  // Images
+  // =========================================================
   const compressImage = (file: File, maxW: number, quality: number): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -879,30 +1026,28 @@ export default function SecretChat() {
           if (w > maxW) { h = Math.round((h * maxW) / w); w = maxW; }
           canvas.width = w; canvas.height = h;
           const ctx = canvas.getContext('2d');
-          if (!ctx) return reject('Canvas failed');
+          if (!ctx) return reject(new Error('Canvas failed'));
           ctx.drawImage(img, 0, 0, w, h);
           resolve(canvas.toDataURL('image/jpeg', quality));
         };
-        img.onerror = reject;
+        img.onerror = () => reject(new Error('Image load failed'));
       };
-      reader.onerror = reject;
+      reader.onerror = () => reject(reader.error);
     });
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !cryptoKey || !roomId) return;
+    if (!file) return;
     try {
       const compressed = await compressImage(file, 800, 0.6);
-      const messageId = Date.now().toString();
-      const encryptedPayload = await encryptText(compressed, cryptoKey);
-      await fetch('/api/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, messageId, encryptedPayload, senderId, type: 'image' }),
-      });
-      playSound('send');
-    } catch (error) { console.error('Image failed', error); }
+      const ok = await postEncrypted(compressed, 'image', senderIdRef.current);
+      if (ok) playSound('send');
+      else showNotice('Image failed to send.', 'error');
+    } catch (error) {
+      console.error('Image failed', error);
+      showNotice('Could not process that image.', 'error');
+    }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -913,10 +1058,13 @@ export default function SecretChat() {
       const compressed = await compressImage(file, 100, 0.5);
       setProfilePic(compressed);
       saveProfileToStorage(compressed);
-      if (cryptoKey && roomId) {
-        await sendSystemMessage(`__SYS_PROFILE__::${senderId}::${compressed}`);
+      if (cryptoKeyRef.current && roomIdRef.current) {
+        await sendSystemMessage(`__SYS_PROFILE__::${senderIdRef.current}::${compressed}`);
       }
-    } catch (error) { console.error('Profile failed', error); }
+    } catch (error) {
+      console.error('Profile failed', error);
+      showNotice('Could not process that image.', 'error');
+    }
     if (profileInputRef.current) profileInputRef.current.value = '';
   };
 
@@ -938,12 +1086,13 @@ export default function SecretChat() {
       const id = viewingImage.id;
       setViewedImages((prev) => new Set(prev).add(id));
       setViewingImage(null);
-      fetch(`/api/message?roomId=${roomId}&messageId=${id}`, { method: 'DELETE' }).catch(() => {});
+      fetch(`/api/message?roomId=${encodeURIComponent(roomId ?? '')}&messageId=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
     }
   };
 
   const handleTouch = (e: React.MouseEvent | React.TouchEvent) => {
     const touch = 'touches' in e ? e.touches[0] : e;
+    if (!touch) return;
     const ripple = document.createElement('div');
     ripple.className = 'fixed w-32 h-32 bg-white/20 rounded-full pointer-events-none animate-ping z-50';
     ripple.style.left = `${touch.clientX - 64}px`;
@@ -951,6 +1100,32 @@ export default function SecretChat() {
     document.body.appendChild(ripple);
     setTimeout(() => ripple.remove(), 1000);
   };
+
+  // --- Shared UI pieces (used by several screens below) ---
+  const toast = notice ? (
+    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[120] px-4 py-2 rounded-full text-[11px] font-sans shadow-lg backdrop-blur-sm flex items-center space-x-2 text-white ${notice.kind === 'error' ? 'bg-red-500/90' : 'bg-emerald-500/90'}`}>
+      {notice.kind === 'error' ? <AlertCircle size={14} /> : <CheckCircle size={14} />}
+      <span>{notice.text}</span>
+    </div>
+  ) : null;
+
+  const celebration = (
+    <>
+      <Confetti active={showCelebration} />
+      {showCelebration && (
+        <div className="fixed inset-0 z-[101] flex items-center justify-center pointer-events-none">
+          <div className="bg-black/80 backdrop-blur-md px-10 py-6 rounded-3xl border-2 border-yellow-400/50 shadow-2xl animate-bounce">
+            <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-pink-400 to-purple-400 font-sans tracking-wider text-center">
+              🎉 Congratulations! 🎉
+            </h2>
+            <p className="text-white text-sm text-center mt-2 font-sans font-semibold">Secure Vault Successfully Created</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  const showRemoteVideo = callType === 'video' && callState === 'connected' && !!remoteStream;
 
   // --- LOADING SCREEN ---
   if (isLoading) {
@@ -976,35 +1151,11 @@ export default function SecretChat() {
     );
   }
 
-  // --- 30-SECOND INITIAL LOAD ---
-  if (isJoined && initialLoad) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex flex-col items-center justify-center" onClick={handleTouch}>
-        <div className="text-center space-y-6">
-          <div className="relative w-20 h-20 mx-auto">
-            <div className="absolute inset-0 border-4 border-indigo-500/30 rounded-full animate-pulse"></div>
-            <div className="absolute inset-0 border-t-4 border-indigo-400 rounded-full animate-spin"></div>
-            <div className="absolute inset-4 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-full flex items-center justify-center">
-              <Lock className="w-8 h-8 text-white" />
-            </div>
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-white mb-2 font-sans">Establishing Secure Connection</h2>
-            <p className="text-indigo-300 text-xs font-sans">Initializing encryption protocols...</p>
-            <p className="text-gray-500 text-xs mt-2 font-mono">Room: {roomId}</p>
-          </div>
-          <div className="w-64 h-1 bg-gray-800 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse w-full"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // --- LANDING PAGE ---
   if (showLanding) {
     return (
       <div className={`min-h-screen bg-cover bg-center bg-fixed transition-opacity duration-700 ${showContent ? 'opacity-100' : 'opacity-0'}`} style={{ backgroundImage: "url('/images/bg-pattern.png')" }} onClick={handleTouch}>
+        {toast}
         <div className="min-h-screen bg-slate-950/90 backdrop-blur-md flex flex-col">
           <div className={`bg-white/10 backdrop-blur-xl shadow-lg p-4 flex items-center justify-between transition-all duration-700 delay-100 ${showContent ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0'}`}>
             <div className="flex items-center space-x-3">
@@ -1052,24 +1203,13 @@ export default function SecretChat() {
   }
 
   // --- ROOM DETAILS MODAL ---
-    // --- ROOM DETAILS MODAL ---
   if (showRoomDetails && roomId && cryptoKey) {
     const roomUrl = roomId && roomKeyBase64 ? buildShareUrl(roomId, roomKeyBase64) : '';
     return (
       <>
-        {/* Celebration Overlay for Room Creation */}
-        <Confetti active={showCelebration} />
-        {showCelebration && (
-          <div className="fixed inset-0 z-[101] flex items-center justify-center pointer-events-none">
-            <div className="bg-black/80 backdrop-blur-md px-10 py-6 rounded-3xl border-2 border-yellow-400/50 shadow-2xl animate-bounce">
-              <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-pink-400 to-purple-400 font-sans tracking-wider text-center">
-                🎉 Congratulations! 🎉
-              </h2>
-              <p className="text-white text-sm text-center mt-2 font-sans font-semibold">Secure Vault Successfully Created</p>
-            </div>
-          </div>
-        )}
-        
+        {toast}
+        {celebration}
+
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center p-4" onClick={handleTouch}>
           <div className="bg-slate-900/90 backdrop-blur-xl border border-gray-800 rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
             <div className="text-center">
@@ -1117,7 +1257,7 @@ export default function SecretChat() {
       <div className="fixed inset-0 z-50 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex flex-col items-center justify-between py-24 px-4" onClick={handleTouch}>
         <div className="flex flex-col items-center space-y-6">
           <div className="w-32 h-32 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center overflow-hidden border-4 border-white/20 shadow-2xl animate-pulse">
-            {peerProfiles[incomingCallData.callerId] ? <img src={peerProfiles[incomingCallData.callerId]} className="w-full h-full object-cover" /> : <User size={64} className="text-white" />}
+            {peerProfiles[incomingCallData.callerId] ? <img src={peerProfiles[incomingCallData.callerId]} className="w-full h-full object-cover" alt="Caller" /> : <User size={64} className="text-white" />}
           </div>
           <div className="text-center">
             <h2 className="text-xl font-bold text-white font-sans">{incomingCallData.callerId}</h2>
@@ -1149,12 +1289,11 @@ export default function SecretChat() {
           </div>
         )}
         <div className="relative flex-1 flex items-center justify-center">
-          {callType === 'video' && callState === 'connected' ? (
-            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-          ) : (
+          <video ref={remoteVideoRef} autoPlay playsInline className={showRemoteVideo ? 'absolute inset-0 w-full h-full object-cover' : 'absolute h-px w-px opacity-0 pointer-events-none'} />
+          {showRemoteVideo ? null : (
             <div className="flex flex-col items-center space-y-6">
               <div className="w-40 h-40 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center overflow-hidden border-4 border-white/20 shadow-2xl">
-                {remotePeerId && peerProfiles[remotePeerId] ? <img src={peerProfiles[remotePeerId]} className="w-full h-full object-cover" /> : <User size={80} className="text-white" />}
+                {remotePeerId && peerProfiles[remotePeerId] ? <img src={peerProfiles[remotePeerId]} className="w-full h-full object-cover" alt="Peer" /> : <User size={80} className="text-white" />}
               </div>
               <div className="text-center">
                 <h2 className="text-lg font-bold text-white font-sans">
@@ -1165,7 +1304,7 @@ export default function SecretChat() {
               </div>
             </div>
           )}
-          {(callType === 'video' || !isVideoOff) && callState === 'connected' && (
+          {callType === 'video' && (callState === 'connected' || callState === 'outgoing') && (
             <video ref={localVideoRef} autoPlay playsInline muted className="absolute bottom-24 right-4 w-28 h-40 object-cover border-2 border-indigo-500/50 rounded-2xl bg-black shadow-2xl" />
           )}
         </div>
@@ -1191,7 +1330,7 @@ export default function SecretChat() {
                   <span className="text-[10px] text-gray-400 font-sans">{isVideoOff ? 'Video On' : 'Video Off'}</span>
                 </button>
               )}
-              <button onClick={endCall} className="flex flex-col items-center space-y-1">
+              <button onClick={hangUp} className="flex flex-col items-center space-y-1">
                 <div className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-lg"><PhoneOff size={28} className="text-white" /></div>
                 <span className="text-[10px] text-gray-400 font-sans">End</span>
               </button>
@@ -1205,10 +1344,7 @@ export default function SecretChat() {
   // --- MAIN CHAT INTERFACE ---
   return (
     <div className="flex flex-col h-screen bg-cover bg-center bg-fixed text-gray-200 overflow-hidden relative" style={{ backgroundImage: "url('/images/bg-pattern.png')" }} onClick={handleTouch}>
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-950/40 via-purple-950/40 to-slate-950/40" style={{ background: `linear-gradient(${animationPhase}deg, rgba(99, 102, 241, 0.3) 0%, rgba(168, 85, 247, 0.3) 50%, rgba(15, 23, 42, 0.4) 100%)` }}></div>
-        <div className="absolute inset-0 bg-gradient-to-bl from-purple-950/30 via-transparent to-indigo-950/30" style={{ opacity: Math.sin((animationPhase * Math.PI) / 180) * 0.5 + 0.5, transform: `rotate(${animationPhase}deg)` }}></div>
-      </div>
+      <AnimatedBackground />
 
       <header className="relative bg-slate-950/90 backdrop-blur-xl p-3 flex justify-between items-center border-b border-gray-800 shrink-0 z-10">
         <div className="flex items-center space-x-3">
@@ -1347,18 +1483,8 @@ export default function SecretChat() {
         </div>
       )}
 
-      {/* --- CELEBRATION OVERLAY --- */}
-      <Confetti active={showCelebration} />
-      {showCelebration && (
-        <div className="fixed inset-0 z-[101] flex items-center justify-center pointer-events-none animate-bounce">
-          <div className="bg-black/60 backdrop-blur-md px-8 py-4 rounded-2xl border border-yellow-400/50 shadow-2xl transform scale-110 transition-all">
-            <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-pink-400 to-purple-400 font-sans tracking-wider text-center">
-              🎉 Congratulations! 🎉
-            </h2>
-            <p className="text-white text-[11px] text-center mt-1 font-sans">Secure Vault Successfully Created</p>
-          </div>
-        </div>
-      )}
+      {toast}
+      {celebration}
     </div>
   );
 }
